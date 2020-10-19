@@ -36,6 +36,7 @@
 uint32_t pui32DataTx[NUM_SSI_DATA] = {0x40,0x00,0x00};
 uint32_t ui32Index;
 
+/* mouaiad */
 void delayMS ( int ms ) {
     SysCtlDelay( (SysCtlClockGet()/(3*1000))*ms ) ;
 }
