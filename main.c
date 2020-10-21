@@ -33,9 +33,116 @@
 
 #define NUM_SSI_DATA    3
 
+//defýntýon of our mcp
+#define    IODIRA    (0x00)      // MCP23x17 I/O Direction Register
+#define    IODIRB    (0x01)      // 1 = Input (default), 0 = Output
+
+#define    IPOLA     (0x02)      // MCP23x17 Input Polarity Register
+#define    IPOLB     (0x03)      // 0 = Normal (default)(low reads as 0), 1 = Inverted (low reads as 1)
+
+#define    GPINTENA  (0x04)      // MCP23x17 Interrupt on Change Pin Assignements
+#define    GPINTENB  (0x05)      // 0 = No Interrupt on Change (default), 1 = Interrupt on Change
+
+#define    DEFVALA   (0x06)      // MCP23x17 Default Compare Register for Interrupt on Change
+#define    DEFVALB   (0x07)      // Opposite of what is here will trigger an interrupt (default = 0)
+
+#define    INTCONA   (0x08)      // MCP23x17 Interrupt on Change Control Register
+#define    INTCONB   (0x09)      // 1 = pin is compared to DEFVAL, 0 = pin is compared to previous state (default)
+
+#define    IOCON     (0x0A)      // MCP23x17 Configuration Register
+//                   (0x0B)      //     Also Configuration Register
+
+#define    GPPUA     (0x0C)      // MCP23x17 Weak Pull-Up Resistor Register
+#define    GPPUB     (0x0D)      // INPUT ONLY: 0 = No Internal 100k Pull-Up (default) 1 = Internal 100k Pull-Up
+
+#define    INTFA     (0x0E)      // MCP23x17 Interrupt Flag Register
+#define    INTFB     (0x0F)      // READ ONLY: 1 = This Pin Triggered the Interrupt
+
+#define    INTCAPA   (0x10)      // MCP23x17 Interrupt Captured Value for Port Register
+#define    INTCAPB   (0x11)      // READ ONLY: State of the Pin at the Time the Interrupt Occurred
+
+#define    GPIOA     (0x12)      // MCP23x17 GPIO Port Register
+#define    GPIOB     (0x13)      // Value on the Port - Writing Sets Bits in the Output Latch
+
+#define    OLATA     (0x14)      // MCP23x17 Output Latch Register
+#define    OLATB     (0x15)      // 1 = Latch High, 0 = Latch Low (default) Reading Returns Latch State, Not Port Value!
+
+
+#define    OPCODEW       (0b01000000)  // Opcode for MCP23S17 with LSB (bit0) set to write (0), address OR'd in later, bits 1-3
+#define    OPCODER       (0b01000001)  // Opcode for MCP23S17 with LSB (bit0) set to read (1), address OR'd in later, bits 1-3
+#define    ADDR_ENABLE   (0b00001000)  // Configuration register for MCP23S17, the only thing we change is enabling hardware addressing
+
+#define    address        0
+
+#define    ADDR_OPCODEW   (OPCODEW | (address << 1)) // important note :here ý put ýn  _address place 0x00
+#define    ADDR_reg       reg
+#define    ADDR_word      word
+
+
+
 uint32_t pui32DataTx[NUM_SSI_DATA] = {0x40,0x00,0x00};
 uint32_t ui32Index;
 
+//mcp varýable
+uint32_t _modeCache   = 0xFFFF;                // Default I/O mode is all input, 0xFFFF
+uint32_t _outputCache = 0x0000;                // Default output state is all off, 0x0000
+uint32_t _pullupCache = 0x0000;                // Default pull-up state is all off, 0x0000
+uint32_t _invertCache = 0x0000;                // Default input inversion state is not inverted, 0x0000
+
+//mcp functýon
+void wordWrite(uint8_t reg, unsigned int word) {  // Accept the start register and word
+
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, !GPIO_PIN_2);
+
+    SSIDataPut(SSI2_BASE, ADDR_OPCODEW);
+    SSIDataPut(SSI2_BASE, reg);
+    SSIDataPut(SSI2_BASE,(uint8_t) (word));
+    SSIDataPut(SSI2_BASE,(uint8_t) (word >> 8));
+
+    while(SSIBusy(SSI2_BASE))
+    {
+
+    }
+
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
+}
+
+void byteWrite(uint8_t reg, uint8_t value) {
+
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, !GPIO_PIN_2);
+
+    SSIDataPut(SSI2_BASE, ADDR_OPCODEW);
+    SSIDataPut(SSI2_BASE, reg);
+    SSIDataPut(SSI2_BASE,value);
+
+    while(SSIBusy(SSI2_BASE))
+    {
+
+    }
+
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
+}
+
+// MODE SETTING FUNCTIONS - BY PIN AND BY WORD
+void pinMode(unsigned int mode) {     // Accept the word…
+  wordWrite(IODIRA, mode);                 // Call the the generic word writer with start register and the mode cache
+  _modeCache = mode;
+}
+
+// WRITE FUNCTIONS - BY WORD AND BY PIN
+
+void digitalWrite(uint8_t pin, uint8_t value) {
+  if (pin < 1 | pin > 16) return;
+  if (pin < 1 | pin > 16) return;
+  if (value) {
+    _outputCache |= 1 << (pin - 1);
+  } else {
+    _outputCache &= ~(1 << (pin - 1));
+  }
+  wordWrite(GPIOA, _outputCache);
+}
 /* mouaiad */
 void delayMS ( int ms ) {
     SysCtlDelay( (SysCtlClockGet()/(3*1000))*ms ) ;
@@ -43,8 +150,9 @@ void delayMS ( int ms ) {
 
 void WriteSPI( void ){
 
-    GPIOPinWrite(GPIO_PORTH_BASE, GPIO_PIN_5, GPIO_PIN_5);
-    GPIOPinWrite(GPIO_PORTH_BASE, GPIO_PIN_5, !GPIO_PIN_5);
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
+
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, !GPIO_PIN_2);
 
     for(ui32Index = 0; ui32Index < NUM_SSI_DATA; ui32Index++)
     {
@@ -55,7 +163,7 @@ void WriteSPI( void ){
     {
 
     }
-    GPIOPinWrite(GPIO_PORTH_BASE, GPIO_PIN_5, GPIO_PIN_5);
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
 }
 
 bool isState = false;
@@ -71,6 +179,7 @@ int main(void)
     GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_2);
     GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_STRENGTH_12MA,
                      GPIO_PIN_TYPE_STD);
+
     GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2 , !GPIO_PIN_2);
 
 
@@ -98,35 +207,43 @@ int main(void)
 
     /* SPI */
 
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, !GPIO_PIN_2);
+//    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
+//    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, !GPIO_PIN_2);
+//
+//    for(ui32Index = 0; ui32Index < NUM_SSI_DATA; ui32Index++)
+//    {
+//        SSIDataPut(SSI2_BASE, pui32DataTx[ui32Index]);
+//    }
+//
+//    while(SSIBusy(SSI2_BASE))
+//    {
+//
+//    }
+//    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
 
-    for(ui32Index = 0; ui32Index < NUM_SSI_DATA; ui32Index++)
-    {
-        SSIDataPut(SSI2_BASE, pui32DataTx[ui32Index]);
+    byteWrite(IOCON, ADDR_ENABLE);
+    pinMode(0x0000);
+
+    while(1){
+
+//        if( isState ){
+//            pui32DataTx[0] = 0x40;
+//            pui32DataTx[1] = 0x09;
+//            pui32DataTx[2] = 0xFF;
+//        }else{
+//            pui32DataTx[0] = 0x40;
+//            pui32DataTx[1] = 0x09;
+//            pui32DataTx[2] = 0x00;
+//        }
+//
+//        WriteSPI();
+//        isState = !isState;
+
+        digitalWrite(1,1);
+        digitalWrite(2,1);
+        delayMS(100);
+        digitalWrite(1,0);
+        digitalWrite(2,0);
+        delayMS(100);
     }
-
-    while(SSIBusy(SSI2_BASE))
-    {
-
-    }
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
-
-	while(1){
-
-	    if( isState ){
-	        pui32DataTx[0] = 0x40;
-	        pui32DataTx[1] = 0x09;
-	        pui32DataTx[2] = 0xFF;
-	    }else{
-	        pui32DataTx[0] = 0x40;
-	        pui32DataTx[1] = 0x09;
-	        pui32DataTx[2] = 0x00;
-	    }
-
-	    WriteSPI();
-	    isState = !isState;
-
-	    delayMS(1000);
-	}
 }
